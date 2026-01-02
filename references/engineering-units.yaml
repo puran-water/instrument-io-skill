@@ -1,0 +1,199 @@
+# Engineering Units Catalog
+# Standard units for instrument measurements
+# Use for unit normalization and validation
+
+flow:
+  primary: "m3/hr"
+  alternatives:
+    - unit: "m3/d"
+      factor: 24  # multiply to get m3/hr
+    - unit: "L/s"
+      factor: 3.6
+    - unit: "L/min"
+      factor: 0.06
+    - unit: "L/hr"
+      factor: 0.001
+    - unit: "MLD"
+      factor: 41.667  # 1 MLD = 1000 m3/d = 41.667 m3/hr
+    - unit: "MGD"
+      factor: 157.725
+    - unit: "GPM"
+      factor: 0.2271
+    - unit: "GPH"
+      factor: 0.003785
+
+level:
+  primary: "m"
+  alternatives:
+    - unit: "mm"
+      factor: 0.001
+    - unit: "cm"
+      factor: 0.01
+    - unit: "ft"
+      factor: 0.3048
+    - unit: "in"
+      factor: 0.0254
+    - unit: "%"
+      note: "Percentage of span"
+
+pressure:
+  primary: "bar"
+  alternatives:
+    - unit: "kPa"
+      factor: 0.01
+    - unit: "Pa"
+      factor: 0.00001
+    - unit: "mbar"
+      factor: 0.001
+    - unit: "psi"
+      factor: 0.0689476
+    - unit: "mH2O"
+      factor: 0.0980665
+    - unit: "mmH2O"
+      factor: 0.0000980665
+    - unit: "mmHg"
+      factor: 0.00133322
+    - unit: "atm"
+      factor: 1.01325
+    - unit: "kg/cm2"
+      factor: 0.980665
+
+temperature:
+  primary: "degC"
+  alternatives:
+    - unit: "degF"
+      conversion: "(value - 32) * 5/9"
+    - unit: "K"
+      conversion: "value - 273.15"
+
+concentration:
+  primary: "mg/L"
+  alternatives:
+    - unit: "g/L"
+      factor: 1000
+    - unit: "g/m3"
+      factor: 1
+    - unit: "kg/m3"
+      factor: 1000
+    - unit: "ppm"
+      factor: 1  # for dilute aqueous
+    - unit: "ppb"
+      factor: 0.001
+    - unit: "%"
+      factor: 10000
+    - unit: "mol/L"
+      note: "Requires molecular weight"
+
+dissolved_oxygen:
+  primary: "mg/L"
+  alternatives:
+    - unit: "% saturation"
+      note: "Temperature dependent"
+    - unit: "ppm"
+      factor: 1
+
+turbidity:
+  primary: "NTU"
+  alternatives:
+    - unit: "FNU"
+      factor: 1
+    - unit: "FAU"
+      factor: 1
+    - unit: "FTU"
+      factor: 1
+
+conductivity:
+  primary: "uS/cm"
+  alternatives:
+    - unit: "mS/cm"
+      factor: 1000
+    - unit: "S/m"
+      factor: 10000
+    - unit: "mS/m"
+      factor: 10
+
+pH:
+  primary: "pH"
+  alternatives: []
+  range:
+    min: 0
+    max: 14
+
+orp:
+  primary: "mV"
+  alternatives: []
+
+chlorine:
+  primary: "mg/L"
+  alternatives:
+    - unit: "ppm"
+      factor: 1
+  note: "Free or total chlorine"
+
+sludge_concentration:
+  primary: "g/L"
+  alternatives:
+    - unit: "mg/L"
+      factor: 0.001
+    - unit: "% TS"
+      factor: 10
+    - unit: "% DS"
+      factor: 10
+
+# Signal types
+signal:
+  analog:
+    - "4-20mA"
+    - "0-10V"
+    - "1-5V"
+  digital:
+    - "24V DC"
+    - "120V AC"
+    - "RELAY"
+    - "Dry Contact"
+  protocol:
+    - "Modbus RTU"
+    - "Modbus TCP"
+    - "HART"
+    - "Profibus"
+    - "Foundation Fieldbus"
+    - "Ethernet/IP"
+
+# Common WWTP measurement ranges
+typical_ranges:
+  influent_flow:
+    min: 0
+    max: 2000
+    unit: "m3/hr"
+  effluent_flow:
+    min: 0
+    max: 2000
+    unit: "m3/hr"
+  tank_level:
+    min: 0
+    max: 6
+    unit: "m"
+  blower_pressure:
+    min: 0
+    max: 1
+    unit: "bar"
+  DO:
+    min: 0
+    max: 10
+    unit: "mg/L"
+  pH:
+    min: 0
+    max: 14
+    unit: "pH"
+  MLSS:
+    min: 0
+    max: 20000
+    unit: "mg/L"
+  turbidity:
+    min: 0
+    max: 100
+    unit: "NTU"
+  temperature:
+    min: 0
+    max: 50
+    unit: "degC"

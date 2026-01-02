@@ -1,0 +1,642 @@
+# IO Patterns for Instrument/IO List Generation
+# Each pattern defines standard IO signals for equipment types
+# Used by apply_io_patterns.py to auto-generate io_signals[]
+
+# =============================================================================
+# Motor/Pump Patterns
+# =============================================================================
+
+pump_dol:
+  description: "Direct-On-Line motor starter"
+  io_count:
+    DI: 3
+    DO: 1
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: YL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Auto/Manual Status"
+    - suffix: OL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Motor Running"
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Trip Status"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "RELAY"
+      component: "Coil"
+      description: "Start/Stop"
+
+pump_vfd:
+  description: "Variable Frequency Drive motor"
+  io_count:
+    DI: 3
+    DO: 1
+    AI: 1
+    AO: 1
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: YL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Auto/Manual Status"
+    - suffix: OL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Motor Running"
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Trip Status"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "RELAY"
+      component: "Coil"
+      description: "Start/Stop"
+    - suffix: SC
+      function: Speed_Command
+      io_type: AO
+      signal_type: "4-20mA"
+      component: "VFD"
+      description: "Speed Command"
+    - suffix: SI
+      function: Speed_Feedback
+      io_type: AI
+      signal_type: "4-20mA"
+      component: "VFD"
+      description: "Speed Feedback"
+
+aodd_pump:
+  description: "Air-Operated Double Diaphragm pump"
+  io_count:
+    DI: 2
+    DO: 1
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: ZSO
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Air Valve Position"
+      description: "Valve Open Status"
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Low Air Pressure Switch"
+      description: "Air Supply Fault"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "24V DC"
+      component: "Solenoid Valve"
+      description: "Start/Stop Air"
+
+metering_pump_speed:
+  description: "Chemical metering pump with stroke speed control"
+  io_count:
+    DI: 3
+    DO: 1
+    AI: 0
+    AO: 1
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: YL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Auto/Manual"
+    - suffix: OL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Running"
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Trip/Fault"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "RELAY"
+      component: "Coil"
+      description: "Start/Stop"
+    - suffix: SC
+      function: Speed_Command
+      io_type: AO
+      signal_type: "4-20mA"
+      component: "Pump Controller"
+      description: "Stroke Speed"
+
+metering_pump_full:
+  description: "Chemical metering pump with speed + stroke length"
+  io_count:
+    DI: 3
+    DO: 1
+    AI: 0
+    AO: 2
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: YL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Auto/Manual"
+    - suffix: OL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Running"
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Trip/Fault"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "RELAY"
+      component: "Coil"
+      description: "Start/Stop"
+    - suffix: SC
+      function: Speed_Command
+      io_type: AO
+      signal_type: "4-20mA"
+      component: "Pump Controller"
+      description: "Stroke Speed"
+    - suffix: SL
+      function: Control
+      io_type: AO
+      signal_type: "4-20mA"
+      component: "Pump Controller"
+      description: "Stroke Length"
+
+motor_soft_starter:
+  description: "MCC Soft-Starter motor"
+  io_count:
+    DI: 4
+    DO: 1
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: YL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Auto/Manual"
+    - suffix: OL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Running"
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Trip/Fault"
+    - suffix: RDY
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Soft-Starter"
+      description: "Soft-Starter Ready"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "RELAY"
+      component: "Coil"
+      description: "Start/Stop"
+
+pump_vfd_extended:
+  description: "VFD with extended monitoring (current feedback)"
+  io_count:
+    DI: 4
+    DO: 1
+    AI: 2
+    AO: 1
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: YL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Auto/Manual"
+    - suffix: OL
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Running"
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Auxiliary Contact"
+      description: "Trip/Fault"
+    - suffix: RDY
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "VFD"
+      description: "VFD Ready"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "RELAY"
+      component: "Coil"
+      description: "Start/Stop"
+    - suffix: SC
+      function: Speed_Command
+      io_type: AO
+      signal_type: "4-20mA"
+      component: "VFD"
+      description: "Speed Command"
+    - suffix: SI
+      function: Speed_Feedback
+      io_type: AI
+      signal_type: "4-20mA"
+      component: "VFD"
+      description: "Speed Feedback"
+    - suffix: II
+      function: Measurement
+      io_type: AI
+      signal_type: "4-20mA"
+      component: "VFD"
+      description: "Current Feedback"
+
+# =============================================================================
+# Control Valve Patterns
+# =============================================================================
+
+valve_onoff_electric:
+  description: "ON/OFF valve with electric actuator (MOV)"
+  io_count:
+    DI: 2
+    DO: 2
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: ZSO
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Limit Switch"
+      description: "Open Position"
+    - suffix: ZSC
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Limit Switch"
+      description: "Closed Position"
+    - suffix: HSO
+      function: Control
+      io_type: DO
+      signal_type: "RELAY"
+      component: "MOV Open Coil"
+      description: "Open Command"
+    - suffix: HSC
+      function: Control
+      io_type: DO
+      signal_type: "RELAY"
+      component: "MOV Close Coil"
+      description: "Close Command"
+
+valve_onoff_pneumatic:
+  description: "ON/OFF valve with pneumatic actuator"
+  io_count:
+    DI: 2
+    DO: 1
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: ZSO
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Limit Switch"
+      description: "Open Position"
+    - suffix: ZSC
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Limit Switch"
+      description: "Closed Position"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "24V DC"
+      component: "Solenoid Valve"
+      description: "Open/Close"
+
+valve_modulating_electric:
+  description: "Modulating valve with electric actuator"
+  io_count:
+    DI: 1
+    DO: 0
+    AI: 1
+    AO: 1
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Actuator Fault"
+      description: "Actuator Fault"
+    - suffix: ZI
+      function: Position_Feedback
+      io_type: AI
+      signal_type: "4-20mA"
+      component: "Position Transmitter"
+      description: "Position Feedback"
+    - suffix: ZC
+      function: Position_Command
+      io_type: AO
+      signal_type: "4-20mA"
+      component: "Actuator"
+      description: "Position Command"
+
+valve_modulating_pneumatic:
+  description: "Modulating valve with pneumatic actuator and I/P"
+  io_count:
+    DI: 1
+    DO: 0
+    AI: 1
+    AO: 1
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Low Air Pressure"
+      description: "Air Supply Fault"
+    - suffix: ZI
+      function: Position_Feedback
+      io_type: AI
+      signal_type: "4-20mA"
+      component: "Position Transmitter"
+      description: "Position Feedback"
+    - suffix: ZC
+      function: Position_Command
+      io_type: AO
+      signal_type: "4-20mA"
+      component: "I/P Transducer"
+      description: "Position Command (to I/P)"
+
+valve_positioner:
+  description: "Valve with positioner and limit switches"
+  io_count:
+    DI: 2
+    DO: 0
+    AI: 1
+    AO: 1
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: ZSO
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Limit Switch"
+      description: "Open Limit"
+    - suffix: ZSC
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Limit Switch"
+      description: "Closed Limit"
+    - suffix: ZI
+      function: Position_Feedback
+      io_type: AI
+      signal_type: "4-20mA"
+      component: "Positioner"
+      description: "Position Feedback"
+    - suffix: ZC
+      function: Position_Command
+      io_type: AO
+      signal_type: "4-20mA"
+      component: "Positioner"
+      description: "Position Command"
+
+solenoid_valve:
+  description: "Simple solenoid valve"
+  io_count:
+    DI: 1
+    DO: 1
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: ZS
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Position Switch"
+      description: "Position Feedback"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "24V DC"
+      component: "Solenoid Coil"
+      description: "Energize"
+
+# =============================================================================
+# Transmitter Patterns
+# =============================================================================
+
+transmitter_4_20:
+  description: "Standard 4-20mA analog transmitter"
+  io_count:
+    DI: 0
+    DO: 0
+    AI: 1
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - function: Measurement
+      io_type: AI
+      signal_type: "4-20mA"
+      component: "Transmitter"
+      description: "Measurement"
+
+transmitter_hart:
+  description: "HART protocol transmitter"
+  io_count:
+    DI: 0
+    DO: 0
+    AI: 0
+    AO: 0
+    PI: 1
+    PO: 0
+  signals:
+    - function: Measurement
+      io_type: PI
+      signal_type: "HART"
+      protocol: "HART"
+      component: "HART Transmitter"
+      description: "Measurement"
+
+analyzer_modbus:
+  description: "Analyzer with Modbus communication"
+  io_count:
+    DI: 0
+    DO: 0
+    AI: 0
+    AO: 0
+    PI: 1
+    PO: 0
+  signals:
+    - function: Measurement
+      io_type: PI
+      signal_type: "Modbus RTU"
+      protocol: "Modbus RTU"
+      component: "Analyzer"
+      description: "Measurement"
+
+analyzer_multi:
+  description: "Multi-signal analyzer (primary + temperature)"
+  io_count:
+    DI: 1
+    DO: 0
+    AI: 2
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Analyzer"
+      description: "Analyzer Fault"
+    - function: Measurement
+      io_type: AI
+      signal_type: "4-20mA"
+      component: "Analyzer"
+      description: "Primary Measurement"
+    - function: Measurement
+      io_type: AI
+      signal_type: "4-20mA"
+      component: "Analyzer"
+      description: "Secondary/Temperature"
+
+# =============================================================================
+# Discrete Sensor Patterns
+# =============================================================================
+
+level_switch:
+  description: "Level switch (high or low)"
+  io_count:
+    DI: 1
+    DO: 0
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: LSH
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Level Switch"
+      description: "High/Low Level"
+
+pressure_switch:
+  description: "Pressure switch (high or low)"
+  io_count:
+    DI: 1
+    DO: 0
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: PSH
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Pressure Switch"
+      description: "High/Low Pressure"
+
+# =============================================================================
+# Safety Patterns
+# =============================================================================
+
+esd_interlock:
+  description: "Emergency Shutdown / Interlock device"
+  io_count:
+    DI: 2
+    DO: 1
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: ZS
+      function: Status
+      io_type: DI
+      signal_type: "24V DC"
+      component: "ESD Device"
+      description: "Trip Status"
+    - suffix: YA
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "ESD Device"
+      description: "Fault/Bypass"
+    - suffix: HS
+      function: Control
+      io_type: DO
+      signal_type: "24V DC"
+      component: "ESD Device"
+      description: "Reset"

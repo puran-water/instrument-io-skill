@@ -1,0 +1,78 @@
+# Instrument Database Template
+# Copy this file to your project and populate with instrument data
+# See schemas/instrument-database.schema.yaml for full schema details
+
+project_id: "PRJ-YYYY-NNN-PROJECT-NAME"
+
+revision:
+  number: "A"
+  date: "YYYY-MM-DD"
+  by: "XXX"
+  description: "Initial issue"
+  history: []
+
+source_pids:
+  - pid_number: "PID-001"
+    source_type: "manual"  # dexpi_xml, pdf_extracted, or manual
+    source_path: ""
+    off_page_connectors: []
+
+instruments:
+  # Example instrument entry - copy and modify as needed
+  - instrument_id: "00000000-0000-0000-0000-000000000001"
+    loop_id: "FIT-01"
+    tag:
+      area: "200"
+      variable: "F"
+      function: "IT"
+      modifier: ""
+      category: "transmitting"
+      loop_number: "01"
+      suffix: ""
+      full_tag: "200-FIT-01"
+    equipment_tag: "200-P-01"
+    pipeline_tag: null
+    service_description: "Permeate Flow Meter"
+    location:
+      pid_reference: "PID-001"
+      physical_location: "Field"
+    device:
+      type: "Electromagnetic Flow Meter"
+      manufacturer: ""
+      model: ""
+      accuracy_class: ""
+      calibration_interval: ""
+    measurement:
+      measured_variable: "Flow"
+      range_min: 0
+      range_max: 500
+      range_unit: "m3/hr"
+    alarms:
+      lolo: null
+      lo: null
+      hi: null
+      hihi: null
+    primary_signal_type: "4-20mA"
+    io_signals:
+      - io_point_id: "00000000-0000-0000-0000-000000000002"
+        signal_function: "Measurement"
+        io_type: "AI"
+        signal_type: "4-20mA"
+        termination: "PLC"
+        component_type: "Transmitter"
+        plc_tag: "200-FIT-01"
+        field_tag: "200-FIT-01"
+        suffix: ""
+        description: "Flow Measurement"
+        protocol: null
+        marshalling: null
+        pattern_source: "transmitter_4_20"
+    hazardous_area:
+      zone: "Safe"
+      ip_rating: "IP65"
+    remarks: ""
+    provenance:
+      source_type: "manual"
+      extraction_date: null
+      page: null
+      confidence: null
