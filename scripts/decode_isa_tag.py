@@ -138,8 +138,8 @@ def decode_tag(tag: str) -> Optional[dict]:
             category = CATEGORY_RULES[func_char]
             break
 
-    # Construct loop_id
-    loop_id = f"{variable}{function}-{loop_number}"
+    # Construct loop_key (ISA 5.1: "{area}-{variable}-{loop_number}")
+    loop_key = f"{area}-{variable}-{loop_number}"
 
     return {
         "area": area,
@@ -151,7 +151,7 @@ def decode_tag(tag: str) -> Optional[dict]:
         "loop_number": loop_number,
         "suffix": suffix,
         "category": category,
-        "loop_id": loop_id,
+        "loop_key": loop_key,
         "full_tag": tag.upper(),
     }
 
@@ -226,7 +226,7 @@ def main():
         if result['suffix']:
             print(f"  Suffix: {result['suffix']}")
         print(f"  Category: {result['category']}")
-        print(f"  Loop ID: {result['loop_id']}")
+        print(f"  Loop Key: {result['loop_key']}")
 
 
 if __name__ == "__main__":

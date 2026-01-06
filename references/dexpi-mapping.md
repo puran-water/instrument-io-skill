@@ -30,7 +30,7 @@ ProcessInstrumentationFunction
 | `tag.function` | `ProcessInstrumentationFunctionCategory.SucceedingLetters` | ISA function |
 | `tag.modifier` | `ProcessInstrumentationFunctionModifier` | H, L, A, etc. |
 | `tag.loop_number` | Parse from TagName | Numeric portion |
-| `loop_id` | Computed | `{variable}{function}-{loop_number}` |
+| `loop_key` | Computed | `{area}-{variable}-{loop_number}` (e.g., "200-F-01") |
 
 ### Equipment Association
 

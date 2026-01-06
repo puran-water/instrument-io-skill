@@ -5,8 +5,9 @@ Validate cross-references in instrument database.
 Checks:
 - Equipment tags referenced by instruments exist
 - P&ID references are consistent
-- Loop IDs are unique within areas
+- Loop keys are valid and instruments reference existing loops
 - IO signals have unique identifiers
+- Instruments share loop_key with their parent loop
 
 Usage:
     python sync_cross_refs.py --database database.yaml
@@ -86,9 +87,14 @@ def validate_pid_refs(database: dict) -> list:
     return errors
 
 
-def validate_loop_ids(database: dict) -> list:
+def validate_loop_keys(database: dict) -> list:
     """
-    Validate loop ID uniqueness within areas.
+    Validate loop_key references and loop entity integrity.
+
+    Checks:
+    - All loops have unique loop_key
+    - All instruments reference existing loops
+    - Instruments in same loop share consistent variable
 
     Args:
         database: Instrument database
@@ -97,20 +103,45 @@ def validate_loop_ids(database: dict) -> list:
         List of validation errors
     """
     errors = []
-    loop_ids_by_area = defaultdict(list)
 
+    # Build set of valid loop_keys from loops collection
+    loops = database.get("loops", [])
+    valid_loop_keys = set()
+    loop_variables = {}
+
+    for loop in loops:
+        loop_key = loop.get("loop_key")
+        if not loop_key:
+            errors.append("Loop missing required loop_key field")
+            continue
+
+        if loop_key in valid_loop_keys:
+            errors.append(f"Duplicate loop_key: {loop_key}")
+        else:
+            valid_loop_keys.add(loop_key)
+            loop_variables[loop_key] = loop.get("variable", "")
+
+    # Validate instrument references to loops
     for inst in database.get("instruments", []):
         tag = inst.get("tag", {})
-        area = tag.get("area", "")
-        loop_id = inst.get("loop_id")
         full_tag = tag.get("full_tag", "unknown")
+        loop_key = inst.get("loop_key")
+        inst_variable = tag.get("variable", "")
 
-        if loop_id:
-            loop_ids_by_area[(area, loop_id)].append(full_tag)
+        if not loop_key:
+            errors.append(f"{full_tag}: Missing required loop_key field")
+            continue
 
-    for (area, loop_id), tags in loop_ids_by_area.items():
-        if len(tags) > 1:
-            errors.append(f"Duplicate loop_id '{loop_id}' in area {area}: {', '.join(tags)}")
+        if loop_key not in valid_loop_keys:
+            errors.append(f"{full_tag}: References non-existent loop_key '{loop_key}'")
+            continue
+
+        # Check variable consistency
+        expected_variable = loop_variables.get(loop_key, "")
+        if expected_variable and inst_variable != expected_variable:
+            errors.append(
+                f"{full_tag}: Variable '{inst_variable}' doesn't match loop variable '{expected_variable}'"
+            )
 
     return errors
 
@@ -217,9 +248,9 @@ def main():
         else:
             print(f"Warning: Equipment file not found: {equipment_path}")
 
-    # Validate loop IDs
-    print("\nValidating loop IDs...")
-    errors = validate_loop_ids(database)
+    # Validate loop keys
+    print("\nValidating loop keys...")
+    errors = validate_loop_keys(database)
     if errors:
         print(f"  Found {len(errors)} issues:")
         for e in errors:

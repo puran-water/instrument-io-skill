@@ -120,6 +120,9 @@ def create_workbook(instruments: list, project_id: str, revision: dict) -> Workb
     for inst in instruments:
         tag = inst.get("tag", {})
         location = inst.get("location", {})
+        # Handle location as string or dict
+        if isinstance(location, str):
+            location = {"physical_location": location, "pid_reference": ""}
         io_signals = inst.get("io_signals", [])
 
         if not io_signals:
@@ -136,22 +139,40 @@ def create_workbook(instruments: list, project_id: str, revision: dict) -> Workb
             electrical = signal.get("electrical", {})
             feeder_type = electrical.get("feeder_type", "") if electrical else ""
 
+            # Build full tag with suffix if available
+            suffix = signal.get("suffix", "")
+            full_tag = tag.get("full_tag", "")
+            field_tag = f"{full_tag}-{suffix}" if suffix else full_tag
+
+            # Get service description (handle both field names)
+            service_desc = inst.get("service_description", "") or inst.get("service", "")
+
+            # Get signal function (handle both field names)
+            sig_function = signal.get("signal_function", "") or signal.get("function", "")
+
+            # Get component description
+            component_desc = signal.get("component_type", "") or signal.get("component", "") or inst.get("component", "")
+
+            # Get feeder type from instrument level if not in signal
+            if not feeder_type:
+                feeder_type = inst.get("feeder_type", "")
+
             data = [
                 tag.get("area", ""),
-                tag.get("function", ""),  # ISA PLC
-                tag.get("function", ""),  # ISA Field
+                tag.get("variable", ""),  # ISA PLC (variable letter)
+                tag.get("variable", ""),  # ISA Field
                 item_no,
-                signal.get("plc_tag", ""),
-                signal.get("field_tag", ""),
-                inst.get("service_description", ""),
-                signal.get("component_type", ""),
+                field_tag,  # PLC Tag Number
+                field_tag,  # Field Tag Number
+                service_desc,
+                component_desc,
                 location.get("pid_reference", ""),
                 location.get("physical_location", ""),
                 signal_category,
                 io_type,
                 signal.get("signal_type", ""),
                 signal.get("termination", ""),
-                signal.get("signal_function", ""),
+                sig_function,
                 feeder_type,  # Electrical feeder type (DOL, VFD, etc.)
                 signal.get("pattern_source", ""),  # IO pattern used
                 signal.get("description", ""),

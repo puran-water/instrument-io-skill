@@ -104,8 +104,8 @@ Used by `apply_io_patterns.py` when reading from equipment list:
 
 | Equipment Type Code | Default Pattern | Override Conditions |
 |---------------------|-----------------|---------------------|
-| PU (Pump) | pump_dol | If VFD in description → pump_vfd |
-| BL (Blower) | pump_vfd | High power → pump_vfd_extended |
+| P (Pump) | pump_dol | If VFD in description → pump_vfd |
+| B (Blower) | pump_vfd | High power → pump_vfd_extended |
 | MX (Mixer) | pump_dol | If VFD → pump_vfd |
 | CV (Control Valve) | valve_modulating_pneumatic | If electric → valve_modulating_electric |
 | MOV | valve_onoff_electric | - |

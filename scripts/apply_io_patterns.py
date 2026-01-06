@@ -62,8 +62,9 @@ VALVE_PATTERNS = {
 EQUIPMENT_PATTERN_MAP = {
     # Motors and rotating equipment
     "P": PUMP_PATTERNS,
-    "PU": PUMP_PATTERNS,
-    "BL": MOTOR_PATTERNS,
+    "PU": PUMP_PATTERNS,  # Alias for P (legacy)
+    "B": MOTOR_PATTERNS,
+    "BL": MOTOR_PATTERNS,  # Alias for B (legacy)
     "MX": MOTOR_PATTERNS,
     "AG": MOTOR_PATTERNS,  # Agitator
     "CP": MOTOR_PATTERNS,  # Compressor

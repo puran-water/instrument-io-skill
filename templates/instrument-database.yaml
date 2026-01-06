@@ -17,15 +17,29 @@ source_pids:
     source_path: ""
     off_page_connectors: []
 
+# Loops - first-class entities per ISA 5.1
+# All instruments in same control function share the same loop_key
+loops:
+  - loop_key: "200-F-01"
+    tag_area: 200
+    loop_number: 1
+    variable: "F"
+    process_unit_type: "secondary_treatment.aerobic_biological_treatment.aeration_tank"
+    service: "Permeate Flow"
+
 instruments:
   # Example instrument entry - copy and modify as needed
+  # Note: loop_key references the loop entity above
   - instrument_id: "00000000-0000-0000-0000-000000000001"
-    loop_id: "FIT-01"
+    loop_key: "200-F-01"
+    process_unit_type: "secondary_treatment.aerobic_biological_treatment.aeration_tank"
     tag:
       area: "200"
       variable: "F"
       function: "IT"
+      functions: ["I", "T"]  # ISA succeeding letters as array
       modifier: ""
+      analyte: null  # For analyzers only (pH, DO, Conductivity, TSS, etc.)
       category: "transmitting"
       loop_number: "01"
       suffix: ""
