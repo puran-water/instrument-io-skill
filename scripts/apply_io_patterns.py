@@ -69,6 +69,16 @@ EQUIPMENT_PATTERN_MAP = {
     "AG": MOTOR_PATTERNS,  # Agitator
     "CP": MOTOR_PATTERNS,  # Compressor
     "FN": MOTOR_PATTERNS,  # Fan
+    "SC": MOTOR_PATTERNS,  # Screen
+    "CN": MOTOR_PATTERNS,  # Conveyor
+    "CL": MOTOR_PATTERNS,  # Clarifier mechanism
+    "TH": MOTOR_PATTERNS,  # Thickener mechanism
+    "CF": MOTOR_PATTERNS,  # Centrifuge
+    "BF": MOTOR_PATTERNS,  # Belt filter
+    "WC": MOTOR_PATTERNS,  # Washer/compactor
+    "CT": MOTOR_PATTERNS,  # Cooling tower
+    "C": MOTOR_PATTERNS,   # Compressor (alt code)
+    "MP": PUMP_PATTERNS,   # Metering pump
     # Valves
     "CV": VALVE_PATTERNS,
     "MOV": {"DEFAULT": "valve_onoff_electric"},
@@ -125,9 +135,33 @@ def load_io_patterns(patterns_path: Path) -> dict:
 
 
 def extract_equipment_type(tag: str) -> str:
-    """Extract equipment type code from tag (e.g., '200-P-01' -> 'P')."""
-    match = re.match(r"\d{3}-([A-Z]+)-\d+", tag)
+    """Extract equipment type code from tag (e.g., '200-P-01' -> 'P', 'W501-P-01' -> 'P')."""
+    # Standard: NNN-XXX-NN or XNNN-XXX-NN (W-prefix)
+    match = re.match(r"[A-Z]?\d{3,4}-([A-Z]+)-\d+", tag)
+    if match:
+        return match.group(1)
+    # Short form: XXX-NN (e.g., SM-02)
+    match = re.match(r"([A-Z]{1,5})-\d+", tag)
     return match.group(1) if match else ""
+
+
+def normalize_equipment_tag(raw_tag: str) -> list[str]:
+    """Normalize paired/multi equipment tags to individual canonical tags.
+
+    Handles:
+      - '202-P-03/04' -> ['202-P-03']
+      - 'SM-02, 401-F-01/02' -> ['SM-02', '401-F-01']
+      - '101-P-01' -> ['101-P-01']
+    """
+    results = []
+    # Split on comma
+    parts = [t.strip() for t in raw_tag.split(",")]
+    for part in parts:
+        # Strip paired suffix: NNN-XX-NN/NN -> NNN-XX-NN
+        cleaned = re.sub(r"(/\d+)$", "", part)
+        if cleaned:
+            results.append(cleaned)
+    return results
 
 
 def get_pattern_for_equipment(equipment: dict) -> tuple[str | None, str | None]:
@@ -141,7 +175,7 @@ def get_pattern_for_equipment(equipment: dict) -> tuple[str | None, str | None]:
         Tuple of (pattern_name, feeder_display) or (None, None) if not mappable
     """
     tag = equipment.get("tag", "")
-    feeder_type = equipment.get("feeder_type", "").upper().strip()
+    feeder_type = (equipment.get("feeder_type") or "").upper().strip()
 
     if not feeder_type:
         return (None, None)
@@ -199,6 +233,193 @@ def generate_io_signals(pattern: dict, base_tag: str, feeder_type: str) -> list:
     return signals
 
 
+def is_local_instrument(inst: dict) -> bool:
+    """Check if an instrument is local (no PLC IO).
+
+    Local instruments include:
+      - PG (Pressure Gauge) — local indication only
+      - TG (Temperature Gauge) — local indication only
+      - FG (Flow Gauge/Glass) — local indication only
+      - LG (Level Gauge/Glass) — local indication only
+      - PI (Pressure Indicator, local) — when no transmitter function
+      - VB (Ball Valve) — manual valve, no actuation
+      - V-RN (manual valve) — manual valve
+      - BFV (Butterfly Valve, manual) — manual valve
+      - GV (Gate Valve, manual) — manual valve unless actuated
+      - ST (Strainer) — passive device
+    """
+    tag_data = inst.get("tag", {}) if isinstance(inst.get("tag"), dict) else {}
+    full_tag = (tag_data.get("full_tag", "") or "").strip()
+    functions = tag_data.get("functions", [])
+    variable = tag_data.get("variable", "")
+    inst_type = (inst.get("instrument_type") or "").lower()
+
+    # Local gauges: function is G (Gauge/Glass) only — no transmit/switch function
+    if "G" in functions and "T" not in functions and "S" not in functions:
+        return True
+
+    # Explicit local gauge tags
+    tag_upper = full_tag.upper().split("--")[0].split("-")[0] if full_tag else ""
+    local_prefixes = ("PG", "TG", "FG", "LG", "SG")
+    if tag_upper in local_prefixes:
+        return True
+    if any(full_tag.upper().startswith(p) for p in local_prefixes):
+        # But not PG that is part of a longer tag like PG-AIT
+        rest = full_tag.upper()[2:]
+        if not rest or rest.startswith("-") or rest.startswith(" "):
+            return True
+
+    # Manual valves: VB (ball), BFV (butterfly), GV (gate), V-RN
+    manual_valve_prefixes = ("VB", "BFV", "GV", "V-RN", "NRV", "CV-M")
+    if any(full_tag.upper().startswith(p) for p in manual_valve_prefixes):
+        return True
+    if inst_type in ("ball valve", "manual valve", "gate valve", "butterfly valve",
+                      "check valve", "non-return valve"):
+        return True
+
+    # Strainers
+    if tag_upper in ("ST",) or inst_type == "strainer":
+        return True
+
+    return False
+
+
+def infer_field_instrument_pattern(inst: dict) -> str | None:
+    """Infer IO pattern for a field instrument based on its tag functions/variable.
+
+    Returns None for local instruments (gauges, manual valves) that have no PLC IO.
+
+    Rules:
+      - Functions contain 'I' and 'T' (transmitter: AIT, LIT, FIT, TIT, PIT) -> transmitter_4_20
+      - Functions contain 'S' + variable 'L' (LSH, LSL) -> level_switch
+      - Functions contain 'S' + variable 'P' (PSH, PSL) -> pressure_switch
+      - Variable 'X' + function 'V' (XV) -> valve_onoff_electric
+      - Local gauges (PG, TG, FG, LG) -> None (no IO)
+      - Manual valves (VB, BFV, GV) -> None (no IO)
+    """
+    # Exclude local instruments
+    if is_local_instrument(inst):
+        return None
+
+    tag_data = inst.get("tag", {}) if isinstance(inst.get("tag"), dict) else {}
+    functions = tag_data.get("functions", [])
+    variable = tag_data.get("variable", "")
+    full_tag = tag_data.get("full_tag", "")
+
+    # Transmitters: function list contains I and T, or instrument_type is Transmitter
+    inst_type = (inst.get("instrument_type") or "").lower()
+    if "T" in functions and "I" in functions:
+        return "transmitter_4_20"
+    if inst_type == "transmitter":
+        return "transmitter_4_20"
+
+    # Switches
+    if "S" in functions:
+        if variable == "L":
+            return "level_switch"
+        if variable == "P":
+            return "pressure_switch"
+        # Generic switch
+        return "level_switch"
+
+    # Valves: XV (actuated shut-off valve)
+    if variable == "X" and "V" in functions:
+        return "valve_onoff_electric"
+
+    # Analyzers
+    if inst_type == "analyzer":
+        return "transmitter_4_20"
+
+    return None
+
+
+def generate_motor_instruments(
+    equipment_list: list, database: dict, patterns: dict
+) -> tuple[int, list[str]]:
+    """Generate motor IO instruments for motorized equipment missing them.
+
+    For each motorized equipment with feeder_type and no existing motor IO instrument
+    in the database, create a new instrument entry with tag {equipment_tag}-M and
+    apply the appropriate motor pattern.
+
+    Returns:
+        Tuple of (count_generated, warnings)
+    """
+    warnings = []
+    generated = 0
+
+    # Build set of equipment tags that already have motor instruments
+    existing_motor_tags = set()
+    for inst in database.get("instruments", []):
+        eq_tag = inst.get("equipment_tag", "")
+        tag_data = inst.get("tag", {})
+        full_tag = tag_data.get("full_tag", "") if isinstance(tag_data, dict) else ""
+        # Motor instruments have -M suffix or type "Motor Control"
+        if full_tag.endswith("-M") or (inst.get("instrument_type") or "").lower() in ("motor control", "motor"):
+            # Normalize the equipment tag
+            for normalized in normalize_equipment_tag(eq_tag):
+                existing_motor_tags.add(normalized)
+
+    for eq in equipment_list:
+        tag = eq.get("tag", "")
+        feeder_type = (eq.get("feeder_type") or "").upper().strip()
+        if not feeder_type:
+            continue
+
+        eq_type = extract_equipment_type(tag)
+        if eq_type not in EQUIPMENT_PATTERN_MAP:
+            continue
+
+        # Skip if motor instrument already exists
+        if tag in existing_motor_tags:
+            continue
+
+        # Determine pattern
+        pattern_name, feeder_display = get_pattern_for_equipment(eq)
+        if not pattern_name:
+            continue
+
+        pattern = patterns.get(pattern_name)
+        if not pattern:
+            warnings.append(f"Pattern '{pattern_name}' not found for motor instrument on {tag}")
+            continue
+
+        motor_tag = f"{tag}-M"
+        io_signals = generate_io_signals(pattern, motor_tag, feeder_display)
+        for sig in io_signals:
+            sig["pattern_source"] = pattern_name
+
+        # Create new instrument entry
+        new_inst = {
+            "instrument_id": str(uuid.uuid4()),
+            "equipment_tag": tag,
+            "instrument_type": "Motor Control",
+            "tag": {
+                "full_tag": motor_tag,
+                "variable": "",
+                "function": "M",
+                "functions": ["M"],
+                "area": str(eq.get("area", "")),
+                "loop_number": "",
+                "suffix": "M",
+                "analyte": None,
+            },
+            "service_description": f"Motor control for {eq.get('description', tag)}",
+            "io_signals": io_signals,
+            "primary_signal_type": None,
+            "provenance": {
+                "source_type": "auto_generated",
+                "extraction_source": "motor_instrument_gen",
+                "confidence": 1.0,
+            },
+        }
+        database.setdefault("instruments", []).append(new_inst)
+        generated += 1
+        print(f"  [motor] {motor_tag}: {pattern_name} [{feeder_display}] ({len(io_signals)} IO)")
+
+    return generated, warnings
+
+
 def apply_patterns(
     database: dict, equipment_list: list, patterns: dict, strict: bool = True
 ) -> tuple[dict, list[str]]:
@@ -216,8 +437,12 @@ def apply_patterns(
     """
     warnings = []
 
-    # Build equipment tag -> equipment mapping
-    equipment_map = {eq.get("tag"): eq for eq in equipment_list if eq.get("tag")}
+    # Build equipment tag -> equipment mapping (including normalized paired tags)
+    equipment_map = {}
+    for eq in equipment_list:
+        tag = eq.get("tag", "")
+        if tag:
+            equipment_map[tag] = eq
 
     # Check for missing feeder_type in equipment list
     for eq in equipment_list:
@@ -227,18 +452,25 @@ def apply_patterns(
             if eq_type in EQUIPMENT_PATTERN_MAP:
                 warnings.append(f"Missing feeder_type for {tag} (required for IO generation)")
 
-    # Process each instrument
+    # Phase 1: Generate motor instruments for motorized equipment
+    print("\nGenerating motor instruments...")
+    motor_count, motor_warnings = generate_motor_instruments(equipment_list, database, patterns)
+    warnings.extend(motor_warnings)
+    print(f"  Generated: {motor_count} motor instruments")
+
+    # Phase 2: Apply patterns to existing field instruments
+    print("\nApplying IO patterns to field instruments...")
     applied_count = 0
     skipped_count = 0
+    field_fallback_count = 0
 
     for inst in database.get("instruments", []):
-        equipment_tag = inst.get("equipment_tag")
-        if not equipment_tag:
+        # Skip motor instruments we just generated
+        if (inst.get("provenance") or {}).get("extraction_source") == "motor_instrument_gen":
             continue
 
-        # Find matching equipment
-        equipment = equipment_map.get(equipment_tag)
-        if not equipment:
+        equipment_tag = inst.get("equipment_tag")
+        if not equipment_tag:
             continue
 
         # Skip if instrument already has io_signals
@@ -246,30 +478,68 @@ def apply_patterns(
             skipped_count += 1
             continue
 
-        # Get pattern for this equipment
-        pattern_name, feeder_type = get_pattern_for_equipment(equipment)
-        if not pattern_name:
+        # Find matching equipment (try exact match, then normalized)
+        equipment = equipment_map.get(equipment_tag)
+        if not equipment:
+            # Try normalizing paired tags
+            for normalized_tag in normalize_equipment_tag(equipment_tag):
+                equipment = equipment_map.get(normalized_tag)
+                if equipment:
+                    break
+
+        base_tag = inst.get("tag", {}).get("full_tag", "") if isinstance(inst.get("tag"), dict) else ""
+
+        # Skip local instruments (PG, VB, etc.) — no PLC IO
+        if is_local_instrument(inst):
             continue
 
-        pattern = patterns.get(pattern_name)
-        if not pattern:
-            warnings.append(f"Pattern '{pattern_name}' not found in io-patterns.yaml")
-            continue
+        # Determine if this is a field instrument (transmitter, switch, valve)
+        # vs. a motor-type instrument. Field instruments should NOT get motor patterns.
+        is_field_instrument = False
+        inst_type = (inst.get("instrument_type") or "").lower()
+        tag_data = inst.get("tag", {}) if isinstance(inst.get("tag"), dict) else {}
+        variable = tag_data.get("variable", "")
+        functions = tag_data.get("functions", [])
 
-        # Generate IO signals
-        base_tag = inst.get("tag", {}).get("full_tag", "")
-        io_signals = generate_io_signals(pattern, base_tag, feeder_type)
+        if inst_type in ("transmitter", "analyzer", "switch", "indicator", "gauge"):
+            is_field_instrument = True
+        elif variable in ("P", "T", "L", "F", "A", "S", "C", "Q"):
+            # ISA variable letters for field measurements
+            is_field_instrument = True
+        elif any(f in functions for f in ["I", "T", "S"]):
+            # I=Indicate, T=Transmit, S=Switch -> field instrument
+            is_field_instrument = True
 
-        # Set pattern source on all signals
-        for sig in io_signals:
-            sig["pattern_source"] = pattern_name
+        if equipment and not is_field_instrument:
+            # Get pattern for this equipment (motor-type instruments only)
+            pattern_name, feeder_type = get_pattern_for_equipment(equipment)
+            if pattern_name:
+                pattern = patterns.get(pattern_name)
+                if pattern:
+                    io_signals = generate_io_signals(pattern, base_tag, feeder_type)
+                    for sig in io_signals:
+                        sig["pattern_source"] = pattern_name
+                    inst["io_signals"] = io_signals
+                    applied_count += 1
+                    print(f"  {base_tag}: {pattern_name} [{feeder_type}] ({len(io_signals)} IO)")
+                    continue
+                else:
+                    warnings.append(f"Pattern '{pattern_name}' not found in io-patterns.yaml")
 
-        inst["io_signals"] = io_signals
-        applied_count += 1
+        # Field instruments and fallback: infer from instrument type/functions
+        fallback_pattern_name = infer_field_instrument_pattern(inst)
+        if fallback_pattern_name:
+            pattern = patterns.get(fallback_pattern_name)
+            if pattern:
+                io_signals = generate_io_signals(pattern, base_tag, "Direct")
+                for sig in io_signals:
+                    sig["pattern_source"] = fallback_pattern_name
+                inst["io_signals"] = io_signals
+                field_fallback_count += 1
+                print(f"  {base_tag}: {fallback_pattern_name} [field-fallback] ({len(io_signals)} IO)")
+                continue
 
-        print(f"  {base_tag}: {pattern_name} [{feeder_type}] ({len(io_signals)} IO)")
-
-    print(f"\nApplied: {applied_count} | Skipped (existing): {skipped_count}")
+    print(f"\nEquipment-matched: {applied_count} | Field-fallback: {field_fallback_count} | Skipped (existing): {skipped_count}")
 
     return database, warnings
 

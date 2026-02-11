@@ -44,10 +44,14 @@ Tier 2 skill: Generate Instrument Index and IO List using YAML as source of trut
 Use the engineering-mcp-server DEXPI tools:
 
 ```
-1. Load DEXPI file: dexpi_import_proteus_xml(file_path="pids/PID-001.xml")
-2. Query instruments: dexpi_get_instrumentation()
-3. Extract to YAML using the mapping in references/dexpi-mapping.md
+1. Load DEXPI file: dexpi_import_proteus_xml(directory_path="pids", filename="PID-001.xml")
+2. Query model: model_id from step 1
+3. Extract instruments via: search_by_type(model_id=model_id, component_type="ProcessInstrumentationFunction")
+   OR search the model's conceptualModel.processInstrumentationFunctions directly
+4. Extract to YAML using the mapping in references/dexpi-mapping.md
 ```
+
+Note: `dexpi_get_instrumentation()` was deprecated. Use `search_by_type()` with component_type="ProcessInstrumentationFunction" instead.
 
 ### From PDF P&ID
 
