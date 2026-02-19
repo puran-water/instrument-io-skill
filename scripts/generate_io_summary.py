@@ -44,7 +44,7 @@ def count_io_types(instruments: list) -> dict:
     counts = {"DI": 0, "DO": 0, "AI": 0, "AO": 0, "PI": 0, "PO": 0}
 
     for inst in instruments:
-        for signal in inst.get("io_signals", []):
+        for signal in (inst.get("io_signals") or []):
             io_type = signal.get("io_type", "")
             if io_type in counts:
                 counts[io_type] += 1

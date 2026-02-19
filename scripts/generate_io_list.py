@@ -119,6 +119,8 @@ def create_workbook(instruments: list, project_id: str, revision: dict) -> Workb
 
     for inst in instruments:
         tag = inst.get("tag", {})
+        if not isinstance(tag, dict):
+            tag = {"full_tag": str(tag or "")}
         location = inst.get("location", {})
         # Handle location as string or dict
         if isinstance(location, str):
@@ -157,12 +159,31 @@ def create_workbook(instruments: list, project_id: str, revision: dict) -> Workb
             if not feeder_type:
                 feeder_type = inst.get("feeder_type", "")
 
+            # ISA symbols: field = variable + field function (e.g., FT, LIT, PIT)
+            #              PLC  = variable + control function (e.g., FIC, LIC)
+            variable = tag.get("variable", "")
+            functions = tag.get("functions", [])
+            # Field symbol: variable + transmit/switch function (T, S, E, etc.)
+            field_funcs = [f for f in functions if f in ("T", "S", "E", "V", "Y")]
+            isa_field = variable + "".join(field_funcs) if variable else ""
+            # PLC symbol: variable + control/indicate functions (I, C, A, etc.)
+            plc_funcs = [f for f in functions if f in ("I", "C", "A", "R")]
+            isa_plc = variable + "".join(plc_funcs) if variable else ""
+            # Fallback: if no specific functions found, use variable only
+            if not isa_field:
+                isa_field = variable
+            if not isa_plc:
+                isa_plc = variable
+
+            # PLC tag vs field tag distinction
+            plc_tag = signal.get("plc_tag", field_tag)
+
             data = [
                 tag.get("area", ""),
-                tag.get("variable", ""),  # ISA PLC (variable letter)
-                tag.get("variable", ""),  # ISA Field
+                isa_plc,   # ISA PLC symbol (e.g., FIC, LIC)
+                isa_field,  # ISA Field symbol (e.g., FT, LIT)
                 item_no,
-                field_tag,  # PLC Tag Number
+                plc_tag,    # PLC Tag Number
                 field_tag,  # Field Tag Number
                 service_desc,
                 component_desc,

@@ -15,11 +15,40 @@ Usage:
 """
 
 import argparse
+import re
 import sys
 from pathlib import Path
 from collections import defaultdict
 
 import yaml
+
+
+def _expand_equipment_tags(equipment_list: list) -> set:
+    """Build expanded set of equipment tags including slash-sibling variants.
+
+    Handles:
+      - Raw tags as-is
+      - Comma-separated parts
+      - Slash-stripped base tags (e.g., '200-B-01/02' → '200-B-01')
+      - Individual slash siblings (e.g., '200-B-01/02' → '200-B-01', '200-B-02')
+    """
+    tags = set()
+    for eq in equipment_list:
+        raw = eq.get("tag", "")
+        if not raw:
+            continue
+        tags.add(raw)
+        for part in raw.split(","):
+            part = part.strip()
+            base = re.sub(r"(/\d+)+$", "", part)
+            if base:
+                tags.add(base)
+            m = re.match(r"^(.*?-)(\d+)((?:/\d+)+)$", part)
+            if m:
+                prefix, first_seq, rest = m.groups()
+                for seq in [first_seq] + [s for s in rest.split("/") if s]:
+                    tags.add(f"{prefix}{seq}")
+    return tags
 
 
 def load_yaml(path: Path) -> dict:
@@ -52,14 +81,20 @@ def validate_equipment_refs(database: dict, equipment_list: list) -> list:
         List of validation errors
     """
     errors = []
-    equipment_tags = {eq.get("tag") for eq in equipment_list if eq.get("tag")}
+    # Build expanded set from equipment list (handle slash/comma tags + siblings)
+    equipment_tags = _expand_equipment_tags(equipment_list)
 
     for inst in database.get("instruments", []):
-        tag = inst.get("tag", {}).get("full_tag", "unknown")
+        tag_data = inst.get("tag", {})
+        tag = tag_data.get("full_tag", "unknown") if isinstance(tag_data, dict) else str(tag_data or "unknown")
         equipment_tag = inst.get("equipment_tag")
 
-        if equipment_tag and equipment_tag not in equipment_tags:
-            errors.append(f"{tag}: References unknown equipment '{equipment_tag}'")
+        if equipment_tag:
+            # Strip descriptions: "200-T-06 (Digester Tank No. 6)" → "200-T-06"
+            cleaned = re.sub(r'\s*\(.*\)\s*$', '', equipment_tag).strip()
+            base = re.sub(r"(/\d+)+$", "", cleaned)
+            if cleaned not in equipment_tags and base not in equipment_tags:
+                errors.append(f"{tag}: References unknown equipment '{equipment_tag}'")
 
     return errors
 
@@ -78,7 +113,8 @@ def validate_pid_refs(database: dict) -> list:
     source_pids = {p.get("pid_number") for p in database.get("source_pids", [])}
 
     for inst in database.get("instruments", []):
-        tag = inst.get("tag", {}).get("full_tag", "unknown")
+        tag_data = inst.get("tag", {})
+        tag = tag_data.get("full_tag", "unknown") if isinstance(tag_data, dict) else str(tag_data or "unknown")
         pid_ref = inst.get("location", {}).get("pid_reference")
 
         if pid_ref and pid_ref not in source_pids:
@@ -123,10 +159,14 @@ def validate_loop_keys(database: dict) -> list:
 
     # Validate instrument references to loops
     for inst in database.get("instruments", []):
-        tag = inst.get("tag", {})
-        full_tag = tag.get("full_tag", "unknown")
+        tag_data = inst.get("tag", {})
+        if isinstance(tag_data, dict):
+            full_tag = tag_data.get("full_tag", "unknown")
+            inst_variable = tag_data.get("variable", "")
+        else:
+            full_tag = str(tag_data or "unknown")
+            inst_variable = ""
         loop_key = inst.get("loop_key")
-        inst_variable = tag.get("variable", "")
 
         if not loop_key:
             errors.append(f"{full_tag}: Missing required loop_key field")
@@ -160,7 +200,8 @@ def validate_io_points(database: dict) -> list:
     io_point_ids = {}
 
     for inst in database.get("instruments", []):
-        tag = inst.get("tag", {}).get("full_tag", "unknown")
+        tag_data = inst.get("tag", {})
+        tag = tag_data.get("full_tag", "unknown") if isinstance(tag_data, dict) else str(tag_data or "unknown")
 
         for signal in inst.get("io_signals", []):
             io_id = signal.get("io_point_id")
@@ -187,11 +228,24 @@ def validate_tag_consistency(database: dict) -> list:
 
     for inst in database.get("instruments", []):
         tag = inst.get("tag", {})
+        if not isinstance(tag, dict):
+            continue  # Cannot validate tag consistency for non-dict tags
         full_tag = tag.get("full_tag", "")
 
         if full_tag:
-            # Reconstruct from parts
-            expected = f"{tag.get('area', '')}-{tag.get('variable', '')}{tag.get('function', '')}{tag.get('modifier', '')}-{tag.get('loop_number', '')}{tag.get('suffix', '')}"
+            # Reconstruct from parts in ISA format: VARIABLE+FUNCTION+MODIFIER-AREA-LOOP(-SUFFIX)
+            variable = tag.get('variable', '')
+            function = tag.get('function', '')
+            modifier = tag.get('modifier', '')
+            area = tag.get('area', '')
+            loop_number = tag.get('loop_number', '')
+            suffix = tag.get('suffix', '')
+
+            func_letters = f"{variable}{function}{modifier}"
+            parts = [p for p in [func_letters, area, loop_number] if p]
+            expected = "-".join(parts)
+            if suffix:
+                expected = f"{expected}-{suffix}" if expected else suffix
 
             if full_tag.upper() != expected.upper():
                 errors.append(f"Tag mismatch: {full_tag} vs computed {expected}")
@@ -199,11 +253,77 @@ def validate_tag_consistency(database: dict) -> list:
     return errors
 
 
+def apply_auto_fixes(database: dict, equipment_tags: set) -> tuple[int, list[str]]:
+    """Auto-fix orphan equipment_tag references in instruments.
+
+    Strategies (applied in order):
+    1. Strip /XX paired suffix: "202-B-01/02" → try "202-B-01"
+    2. Try sibling offsets: "102-TK-02" → try "102-TK-01" if it exists
+    3. Normalize non-ISA descriptive tags to nearest equipment match
+
+    Returns:
+        (fix_count, fix_messages)
+    """
+    PAIRED_SUFFIX_RE = re.compile(r"^(.+?)(/\d+)+$")
+    ISA_TAG_RE = re.compile(r"^([A-Z]?\d{3,4})-([A-Z]{1,5})-(\d+)$")
+
+    fix_count = 0
+    messages = []
+
+    for inst in database.get("instruments", []):
+        equip_tag = inst.get("equipment_tag")
+        if not equip_tag or equip_tag in equipment_tags:
+            continue
+
+        full_tag = inst.get("tag", {}).get("full_tag", "unknown") if isinstance(inst.get("tag"), dict) else "unknown"
+        original_ref = equip_tag
+
+        # Strategy 1: Strip /XX paired suffix
+        m = PAIRED_SUFFIX_RE.match(equip_tag)
+        if m:
+            base_tag = m.group(1)
+            if base_tag in equipment_tags:
+                inst["equipment_tag"] = base_tag
+                fix_count += 1
+                messages.append(f"  [fix] {full_tag}: '{original_ref}' → '{base_tag}' (stripped paired suffix)")
+                continue
+
+        # Strategy 2: Try sibling offsets (±1, ±2) for ISA-format tags
+        m = ISA_TAG_RE.match(equip_tag)
+        if m:
+            prefix, code, seq_str = m.groups()
+            seq = int(seq_str)
+            fmt_len = len(seq_str)
+            for offset in [1, -1, 2, -2]:
+                sibling_seq = seq + offset
+                if sibling_seq < 1:
+                    continue
+                sibling_tag = f"{prefix}-{code}-{sibling_seq:0{fmt_len}d}"
+                if sibling_tag in equipment_tags:
+                    inst["equipment_tag"] = sibling_tag
+                    fix_count += 1
+                    messages.append(f"  [fix] {full_tag}: '{original_ref}' → '{sibling_tag}' (sibling offset {offset:+d})")
+                    break
+            else:
+                # No sibling found via offset — continue to strategy 3
+                pass
+            if inst["equipment_tag"] != original_ref:
+                continue
+
+        # Strategy 3: Normalize non-ISA descriptive tags to nearest equipment
+        # e.g. "AIR/DIRT SEPARATOR" or "FEED TANK" → try to find equipment with matching description
+        if not ISA_TAG_RE.match(equip_tag):
+            # Non-ISA tag — not auto-fixable, leave as-is with info message
+            messages.append(f"  [info] {full_tag}: non-ISA equipment_tag '{original_ref}' — skipped (manual review)")
+
+    return fix_count, messages
+
+
 def main():
     parser = argparse.ArgumentParser(description="Validate cross-references in instrument database")
     parser.add_argument("--database", "-d", required=True, help="Path to database YAML")
-    parser.add_argument("--equipment", "-e", help="Path to equipment-list.qmd")
-    parser.add_argument("--fix", action="store_true", help="Attempt to fix issues")
+    parser.add_argument("--equipment", "-e", help="Path to equipment-list.qmd or equipment-list.yaml")
+    parser.add_argument("--fix", action="store_true", help="Attempt to auto-fix orphan equipment references")
     args = parser.parse_args()
 
     database_path = Path(args.database)
@@ -233,11 +353,33 @@ def main():
         if equipment_path.exists():
             print(f"\nValidating equipment references...")
             try:
-                frontmatter = load_qmd_frontmatter(equipment_path)
+                # Support both QMD and plain YAML formats
+                if equipment_path.suffix == '.qmd':
+                    frontmatter = load_qmd_frontmatter(equipment_path)
+                else:
+                    frontmatter = load_yaml(equipment_path)
                 equipment_list = frontmatter.get("equipment", [])
+                equipment_tags = _expand_equipment_tags(equipment_list)
+
+                # Auto-fix orphan references before validation if --fix is set
+                if args.fix:
+                    print("\n  Applying auto-fixes for orphan equipment references...")
+                    fix_count, fix_messages = apply_auto_fixes(database, equipment_tags)
+                    for msg in fix_messages:
+                        print(msg)
+                    if fix_count > 0:
+                        print(f"  Fixed {fix_count} orphan reference(s)")
+                        # Save the fixed database
+                        with open(database_path, "w") as f:
+                            yaml.dump(database, f, default_flow_style=False,
+                                      sort_keys=False, allow_unicode=True)
+                        print(f"  Saved fixed database to: {database_path}")
+                    else:
+                        print("  No auto-fixable orphans found")
+
                 errors = validate_equipment_refs(database, equipment_list)
                 if errors:
-                    print(f"  Found {len(errors)} issues:")
+                    print(f"  Found {len(errors)} remaining issues:")
                     for e in errors:
                         print(f"    - {e}")
                 else:

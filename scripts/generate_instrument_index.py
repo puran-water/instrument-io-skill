@@ -106,34 +106,62 @@ def create_workbook(instruments: list, project_id: str, revision: dict) -> Workb
     # Data rows
     for item_no, inst in enumerate(instruments, 1):
         row = header_row + item_no
-        tag = inst.get("tag", {})
-        device = inst.get("device", {})
-        measurement = inst.get("measurement", {})
-        alarms = inst.get("alarms", {})
-        location = inst.get("location", {})
+        tag = inst.get("tag", {}) if isinstance(inst.get("tag"), dict) else {}
+        # Map to actual YAML schema fields (flat structure, not nested objects)
+        # instrument_type, range, output_signal, area etc. are top-level fields
 
-        # Primary signal type is required in schema - use directly
+        # Primary signal type
         signal_type = inst.get("primary_signal_type", "")
+        # Derive from io_signals if not set
+        if not signal_type:
+            io_signals = inst.get("io_signals", [])
+            if io_signals:
+                first_sig = io_signals[0]
+                signal_type = first_sig.get("signal_type", first_sig.get("io_type", ""))
+
+        # Range fields — check top-level and nested
+        range_val = inst.get("range", "")
+        range_unit = inst.get("range_unit", "")
+        range_min = inst.get("range_min", "")
+        range_max = inst.get("range_max", "")
+
+        # Parse "0-100 degC" style range string into min/max/unit
+        if range_val and not range_min and not range_max:
+            import re as _re
+            range_match = _re.match(r"([\d.]+)\s*[-–]\s*([\d.]+)\s*(.*)", str(range_val))
+            if range_match:
+                range_min = range_match.group(1)
+                range_max = range_match.group(2)
+                if not range_unit:
+                    range_unit = range_match.group(3).strip()
+
+        # Location — check top-level area and location fields
+        area = tag.get("area", inst.get("area", ""))
+        pid_ref = inst.get("pid_reference", inst.get("source_pid", ""))
+        location_str = inst.get("location", "")
+        if isinstance(location_str, dict):
+            pid_ref = pid_ref or location_str.get("pid_reference", "")
+            location_str = location_str.get("physical_location", "")
 
         data = [
             item_no,
             tag.get("full_tag", ""),
-            inst.get("service_description", ""),
-            location.get("pid_reference", ""),
+            inst.get("service_description", inst.get("service", "")),
+            pid_ref,
             inst.get("equipment_tag", ""),
-            location.get("physical_location", ""),
-            device.get("manufacturer", ""),
-            device.get("type", ""),
+            location_str if isinstance(location_str, str) else str(area),
+            inst.get("manufacturer", ""),
+            inst.get("instrument_type", inst.get("type", "")),
             signal_type,
-            measurement.get("range_unit", ""),
-            measurement.get("range_min", ""),
-            measurement.get("range_max", ""),
-            alarms.get("lolo", ""),
-            alarms.get("lo", ""),
-            alarms.get("hi", ""),
-            alarms.get("hihi", ""),
-            measurement.get("range_min", ""),  # PLC 4mA = range_min
-            measurement.get("range_max", ""),  # PLC 20mA = range_max
+            range_unit,
+            range_min,
+            range_max,
+            inst.get("alarm_lolo", ""),
+            inst.get("alarm_lo", ""),
+            inst.get("alarm_hi", ""),
+            inst.get("alarm_hihi", ""),
+            range_min,  # PLC 4mA = range_min
+            range_max,  # PLC 20mA = range_max
             inst.get("remarks", ""),
         ]
 

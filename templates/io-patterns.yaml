@@ -608,6 +608,40 @@ pressure_switch:
       component: "Pressure Switch"
       description: "High/Low Pressure"
 
+temperature_switch:
+  description: "Temperature switch (high or low)"
+  io_count:
+    DI: 1
+    DO: 0
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: TSH
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Temperature Switch"
+      description: "High/Low Temperature"
+
+flow_switch:
+  description: "Flow switch (high or low)"
+  io_count:
+    DI: 1
+    DO: 0
+    AI: 0
+    AO: 0
+    PI: 0
+    PO: 0
+  signals:
+    - suffix: FSH
+      function: Alarm
+      io_type: DI
+      signal_type: "24V DC"
+      component: "Flow Switch"
+      description: "High/Low Flow"
+
 # =============================================================================
 # Safety Patterns
 # =============================================================================

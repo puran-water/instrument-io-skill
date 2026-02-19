@@ -78,6 +78,13 @@ EQUIPMENT_PATTERN_MAP = {
     "WC": MOTOR_PATTERNS,  # Washer/compactor
     "CT": MOTOR_PATTERNS,  # Cooling tower
     "C": MOTOR_PATTERNS,   # Compressor (alt code)
+    "COMP": MOTOR_PATTERNS, # Compressor
+    "G": MOTOR_PATTERNS,   # Grinder (single-letter code)
+    "GR": MOTOR_PATTERNS,  # Grinder
+    "SP": MOTOR_PATTERNS,  # Screw Press
+    "FP": MOTOR_PATTERNS,  # Filter Press
+    "SM": MOTOR_PATTERNS,  # Static Mixer
+    "DR": MOTOR_PATTERNS,  # Dryer
     "MP": PUMP_PATTERNS,   # Metering pump
     # Valves
     "CV": VALVE_PATTERNS,
@@ -150,6 +157,7 @@ def normalize_equipment_tag(raw_tag: str) -> list[str]:
 
     Handles:
       - '202-P-03/04' -> ['202-P-03']
+      - '500-P-01/02/03' -> ['500-P-01']
       - 'SM-02, 401-F-01/02' -> ['SM-02', '401-F-01']
       - '101-P-01' -> ['101-P-01']
     """
@@ -157,8 +165,8 @@ def normalize_equipment_tag(raw_tag: str) -> list[str]:
     # Split on comma
     parts = [t.strip() for t in raw_tag.split(",")]
     for part in parts:
-        # Strip paired suffix: NNN-XX-NN/NN -> NNN-XX-NN
-        cleaned = re.sub(r"(/\d+)$", "", part)
+        # Strip ALL paired suffixes: NNN-XX-NN/NN/NN -> NNN-XX-NN
+        cleaned = re.sub(r"(/\d+)+$", "", part)
         if cleaned:
             results.append(cleaned)
     return results
@@ -313,13 +321,17 @@ def infer_field_instrument_pattern(inst: dict) -> str | None:
     if inst_type == "transmitter":
         return "transmitter_4_20"
 
-    # Switches
+    # Switches — classify by measured variable
     if "S" in functions:
         if variable == "L":
             return "level_switch"
         if variable == "P":
             return "pressure_switch"
-        # Generic switch
+        if variable == "T":
+            return "temperature_switch"
+        if variable == "F":
+            return "flow_switch"
+        # Generic switch — default to level_switch as most common
         return "level_switch"
 
     # Valves: XV (actuated shut-off valve)
@@ -370,8 +382,9 @@ def generate_motor_instruments(
         if eq_type not in EQUIPMENT_PATTERN_MAP:
             continue
 
-        # Skip if motor instrument already exists
-        if tag in existing_motor_tags:
+        # Skip if motor instrument already exists (normalize to match slash/comma variants)
+        normalized_variants = normalize_equipment_tag(tag)
+        if any(nt in existing_motor_tags for nt in normalized_variants):
             continue
 
         # Determine pattern
@@ -437,12 +450,49 @@ def apply_patterns(
     """
     warnings = []
 
-    # Build equipment tag -> equipment mapping (including normalized paired tags)
+    # Build equipment tag -> equipment mapping with bidirectional pair resolution.
+    # When a tag is paired (e.g. "202-B-01/02"), map both individual siblings
+    # so instruments referencing either "202-B-01" or "202-B-02" resolve correctly.
     equipment_map = {}
+    _paired_tag_re = re.compile(r"^([A-Z]?\d{3,4}-[A-Z]{1,5}-)(\d+)((?:/\d+)+)$")
     for eq in equipment_list:
         tag = eq.get("tag", "")
-        if tag:
-            equipment_map[tag] = eq
+        if not tag:
+            continue
+        equipment_map[tag] = eq
+
+        # Index ALL normalized variants (comma-split + slash-stripped base tags)
+        # so instruments referencing any variant resolve correctly (C2 fix)
+        for norm_tag in normalize_equipment_tag(tag):
+            equipment_map.setdefault(norm_tag, eq)
+
+        # Expand paired/triple tags: "202-B-01/02" → map "202-B-01", "202-B-02"
+        # Also handles triple+: "500-P-01/02/03" → map "500-P-01", "500-P-02", "500-P-03"
+        m = _paired_tag_re.match(tag)
+        if m:
+            prefix, first_seq, suffix_group = m.groups()
+            all_seqs = [first_seq] + [s for s in suffix_group.split("/") if s]
+            fmt_len = max(len(s) for s in all_seqs)
+            for seq in all_seqs:
+                individual_tag = f"{prefix}{seq.zfill(fmt_len)}"
+                equipment_map.setdefault(individual_tag, eq)
+
+        # Also check quantity_note for sister sequences (e.g. "1W + 1S" with tag 102-G-01)
+        # and create alias for the inferred sibling (102-G-02)
+        qty_note = str(eq.get("quantity_note") or "")
+        quantity = eq.get("quantity", 1)
+        try:
+            quantity = int(quantity)
+        except (TypeError, ValueError):
+            quantity = 1
+        if quantity >= 2 and "S" in qty_note.upper():
+            # Infer sibling by incrementing the sequence number
+            sibling_match = re.match(r"^([A-Z]?\d{3,4}-[A-Z]{1,5}-)(\d+)$", tag)
+            if sibling_match:
+                sib_prefix, sib_seq = sibling_match.groups()
+                for offset in range(1, quantity):
+                    sib_tag = f"{sib_prefix}{(int(sib_seq) + offset):0{len(sib_seq)}d}"
+                    equipment_map.setdefault(sib_tag, eq)
 
     # Check for missing feeder_type in equipment list
     for eq in equipment_list:
@@ -451,6 +501,26 @@ def apply_patterns(
             eq_type = extract_equipment_type(tag)
             if eq_type in EQUIPMENT_PATTERN_MAP:
                 warnings.append(f"Missing feeder_type for {tag} (required for IO generation)")
+
+    # Phase 0: Deduplicate instruments by full_tag (same instrument on multiple P&ID pages)
+    # Keep the first occurrence (earliest page / highest confidence)
+    instruments = database.get("instruments", [])
+    seen_tags: dict[str, int] = {}
+    dedup_removed = 0
+    for i, inst in enumerate(instruments):
+        tag_data = inst.get("tag", {})
+        ft = tag_data.get("full_tag", "") if isinstance(tag_data, dict) else str(tag_data)
+        if ft and ft in seen_tags:
+            dedup_removed += 1
+        elif ft:
+            seen_tags[ft] = i
+    if dedup_removed > 0:
+        database["instruments"] = [
+            inst for i, inst in enumerate(instruments)
+            if (inst.get("tag", {}).get("full_tag", "") if isinstance(inst.get("tag"), dict) else str(inst.get("tag", ""))) not in seen_tags
+            or seen_tags.get(inst.get("tag", {}).get("full_tag", "") if isinstance(inst.get("tag"), dict) else str(inst.get("tag", ""))) == i
+        ]
+        print(f"Dedup: removed {dedup_removed} duplicate instrument tags")
 
     # Phase 1: Generate motor instruments for motorized equipment
     print("\nGenerating motor instruments...")
@@ -470,8 +540,6 @@ def apply_patterns(
             continue
 
         equipment_tag = inst.get("equipment_tag")
-        if not equipment_tag:
-            continue
 
         # Skip if instrument already has io_signals
         if inst.get("io_signals"):
@@ -479,13 +547,15 @@ def apply_patterns(
             continue
 
         # Find matching equipment (try exact match, then normalized)
-        equipment = equipment_map.get(equipment_tag)
-        if not equipment:
-            # Try normalizing paired tags
-            for normalized_tag in normalize_equipment_tag(equipment_tag):
-                equipment = equipment_map.get(normalized_tag)
-                if equipment:
-                    break
+        equipment = None
+        if equipment_tag:
+            equipment = equipment_map.get(equipment_tag)
+            if not equipment:
+                # Try normalizing paired tags
+                for normalized_tag in normalize_equipment_tag(equipment_tag):
+                    equipment = equipment_map.get(normalized_tag)
+                    if equipment:
+                        break
 
         base_tag = inst.get("tag", {}).get("full_tag", "") if isinstance(inst.get("tag"), dict) else ""
 
@@ -527,6 +597,7 @@ def apply_patterns(
                     warnings.append(f"Pattern '{pattern_name}' not found in io-patterns.yaml")
 
         # Field instruments and fallback: infer from instrument type/functions
+        # This also handles instruments with no equipment_tag (XV valves, TC controllers)
         fallback_pattern_name = infer_field_instrument_pattern(inst)
         if fallback_pattern_name:
             pattern = patterns.get(fallback_pattern_name)
@@ -538,6 +609,8 @@ def apply_patterns(
                 field_fallback_count += 1
                 print(f"  {base_tag}: {fallback_pattern_name} [field-fallback] ({len(io_signals)} IO)")
                 continue
+            else:
+                warnings.append(f"Inferred pattern '{fallback_pattern_name}' for '{base_tag}' not found in io-patterns.yaml — 0 IO assigned")
 
     print(f"\nEquipment-matched: {applied_count} | Field-fallback: {field_fallback_count} | Skipped (existing): {skipped_count}")
 

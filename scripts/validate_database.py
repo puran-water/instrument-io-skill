@@ -69,7 +69,7 @@ def validate_database(database_path: Path, schema_path: Path, strict: bool = Fal
         errors.append(f"Duplicate instrument_id: {dup}")
 
     # Check for duplicate full_tags
-    tags = [i.get("tag", {}).get("full_tag") for i in instruments]
+    tags = [i.get("tag", {}).get("full_tag") for i in instruments if isinstance(i.get("tag"), dict)]
     dup_tags = set(x for x in tags if x and tags.count(x) > 1)
     for dup in dup_tags:
         errors.append(f"Duplicate full_tag: {dup}")
@@ -77,6 +77,8 @@ def validate_database(database_path: Path, schema_path: Path, strict: bool = Fal
     # Validate tag structure matches full_tag
     for inst in instruments:
         tag = inst.get("tag", {})
+        if not isinstance(tag, dict):
+            continue
         full_tag = tag.get("full_tag", "")
         if full_tag:
             expected = f"{tag.get('area', '')}-{tag.get('variable', '')}{tag.get('function', '')}{tag.get('modifier', '')}-{tag.get('loop_number', '')}{tag.get('suffix', '')}"
@@ -85,7 +87,8 @@ def validate_database(database_path: Path, schema_path: Path, strict: bool = Fal
 
     # Validate io_signals have unique io_point_ids
     for inst in instruments:
-        tag = inst.get("tag", {}).get("full_tag", "unknown")
+        tag_data = inst.get("tag", {})
+        tag = tag_data.get("full_tag", "unknown") if isinstance(tag_data, dict) else str(tag_data)
         io_ids = [s.get("io_point_id") for s in inst.get("io_signals", []) if s.get("io_point_id")]
         dup_io = set(x for x in io_ids if io_ids.count(x) > 1)
         for dup in dup_io:
@@ -103,7 +106,9 @@ def validate_database(database_path: Path, schema_path: Path, strict: bool = Fal
     for inst in instruments:
         pid_ref = inst.get("location", {}).get("pid_reference")
         if pid_ref and pid_ref not in source_pids:
-            msg = f"Warning: P&ID {pid_ref} referenced by {inst.get('tag', {}).get('full_tag')} not in source_pids"
+            tag_data = inst.get("tag", {})
+            full_tag = tag_data.get("full_tag") if isinstance(tag_data, dict) else str(tag_data)
+            msg = f"Warning: P&ID {pid_ref} referenced by {full_tag} not in source_pids"
             if strict:
                 errors.append(msg)
             else:
@@ -112,7 +117,8 @@ def validate_database(database_path: Path, schema_path: Path, strict: bool = Fal
     # Validate io_type consistency
     valid_io_types = {"DI", "DO", "AI", "AO", "PI", "PO"}
     for inst in instruments:
-        tag = inst.get("tag", {}).get("full_tag", "unknown")
+        tag_data = inst.get("tag", {})
+        tag = tag_data.get("full_tag", "unknown") if isinstance(tag_data, dict) else str(tag_data)
         for sig in inst.get("io_signals", []):
             io_type = sig.get("io_type")
             if io_type and io_type not in valid_io_types:
